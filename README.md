@@ -344,3 +344,6 @@ let config_id = alert_registry.register_alert(
 
 <!-- handsoff-issue-409 -->
 - #409: feat: add get_alerts_updated_since paginated variant to bound instruction budget for large registries
+
+<!-- handsoff-issue-410 -->
+- #410: feat: add remove_alert_batch for owners to remove multiple alerts in one transaction
