@@ -5,9 +5,9 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::{Address as _, Events as _}, vec, Address, Env, String, Symbol, TryFromVal};
+use soroban_sdk::{testutils::{Address as _, Events as _}, vec, Address, Env, String, Symbol, TryFromVal, Val};
 
-use crate::{AlertRegistry, AlertRegistryClient};
+use crate::{AlertRegistry, AlertRegistryClient, MAX_TTL};
 
 /// True when some emitted event has exactly the two topics `(a, b)`.
 fn emitted(env: &Env, a: &str, b: &str) -> bool {
@@ -17,6 +17,22 @@ fn emitted(env: &Env, a: &str, b: &str) -> bool {
         topics.len() == 2
             && Symbol::try_from_val(env, &topics.get(0).unwrap()).ok() == Some(want_a.clone())
             && Symbol::try_from_val(env, &topics.get(1).unwrap()).ok() == Some(want_b.clone())
+    })
+}
+
+/// Returns the `effective_ttl` carried by the first `(alert, bump)` event, if any.
+fn bump_effective_ttl(env: &Env) -> Option<u32> {
+    let want_a = Symbol::new(env, "alert");
+    let want_b = Symbol::new(env, "bump");
+    env.events().all().iter().find_map(|(_contract, topics, data)| {
+        if topics.len() == 2
+            && Symbol::try_from_val(env, &topics.get(0).unwrap()).ok() == Some(want_a.clone())
+            && Symbol::try_from_val(env, &topics.get(1).unwrap()).ok() == Some(want_b.clone())
+        {
+            u32::try_from_val(env, &data).ok()
+        } else {
+            None
+        }
     })
 }
 
@@ -76,6 +92,32 @@ fn bump_emits_alert_bump() {
     );
     client.bump_alert(&id, &1_000);
     assert!(emitted(&env, "alert", "bump"));
+}
+
+// #393 — bump_alert clamps the requested TTL to MAX_TTL and requires no auth.
+#[test]
+fn bump_clamps_ttl_at_max_and_needs_no_auth() {
+    let (env, client, owner, target) = setup();
+    let id = client.register_alert(
+        &owner,
+        &target,
+        &String::from_str(&env, "alert"),
+        &String::from_str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        &vec![&env, String::from_str(&env, "rule:transfer")],
+        &None,
+    );
+
+    // Call from an address that is not the owner: bump_alert must succeed without auth.
+    let stranger = Address::generate(&env);
+    let _ = &stranger;
+    client.bump_alert(&id, &u32::MAX);
+
+    assert!(emitted(&env, "alert", "bump"));
+    assert_eq!(
+        bump_effective_ttl(&env),
+        Some(MAX_TTL),
+        "#393: bump_alert must clamp effective_ttl to MAX_TTL"
+    );
 }
 
 #[test]
