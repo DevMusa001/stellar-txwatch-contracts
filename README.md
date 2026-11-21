@@ -341,3 +341,6 @@ let config_id = alert_registry.register_alert(
 
 <!-- handsoff-issue-406 -->
 - #406: test: add test for AlertRegistry remove_admin returns LastAdmin when only one admin remains
+
+<!-- handsoff-issue-409 -->
+- #409: feat: add get_alerts_updated_since paginated variant to bound instruction budget for large registries
