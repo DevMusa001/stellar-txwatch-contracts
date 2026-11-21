@@ -100,3 +100,24 @@ fn is_authorized_is_true_only_for_registered_watchers() {
     assert!(client.is_authorized(&watcher));
     assert!(!client.is_authorized(&other));
 }
+
+#[test]
+fn update_target_contract_migrates_contract_index() {
+    let (env, client, admin) = setup();
+    let watcher = Address::generate(&env);
+    let contract_a = Address::generate(&env);
+    let contract_b = Address::generate(&env);
+
+    client.register_watcher(&admin, &watcher, &None);
+    let alert_id = client.register_alert(&admin, &watcher, &contract_a);
+
+    assert!(client.get_alert_ids_for_contract(&contract_a).contains(&alert_id));
+
+    client.update_target_contract(&admin, &alert_id, &contract_b);
+
+    assert!(client.get_alert_ids_for_contract(&contract_a).is_empty());
+    assert!(client.get_alert_ids_for_contract(&contract_b).contains(&alert_id));
+
+    let config = client.get_alert_config(&alert_id);
+    assert_eq!(config.target_contract, contract_b);
+}
