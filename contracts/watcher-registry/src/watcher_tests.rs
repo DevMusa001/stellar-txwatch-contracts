@@ -2,7 +2,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::{Address as _, Events}, Address, Env, IntoVal, Symbol};
 
 use crate::{ContractError, WatcherRegistry, WatcherRegistryClient};
 
@@ -51,6 +51,41 @@ fn duplicate_add_admin_is_idempotent() {
 fn removing_the_last_admin_is_refused() {
     let (_env, client, admin) = setup();
     assert_eq!(client.try_remove_admin(&admin, &admin), Err(Ok(ContractError::LastAdmin)));
+}
+
+#[test]
+fn self_removal_emits_remove_and_self_remove_events() {
+    let (env, client, admin) = setup();
+    let second = Address::generate(&env);
+    client.add_admin(&admin, &second);
+
+    client.remove_admin(&second, &second);
+
+    let events = env.events().all();
+    let remove_event = (
+        Symbol::new(&env, "admin"),
+        Symbol::new(&env, "remove"),
+    );
+    let self_remove_event = (
+        Symbol::new(&env, "admin"),
+        Symbol::new(&env, "self_remove"),
+    );
+
+    let mut saw_remove = false;
+    let mut saw_self_remove = false;
+    for (_contract, topics, _data) in events.iter() {
+        let topic0: Symbol = topics.get(0).unwrap().into_val(&env);
+        let topic1: Symbol = topics.get(1).unwrap().into_val(&env);
+        if topic0 == remove_event.0 && topic1 == remove_event.1 {
+            saw_remove = true;
+        }
+        if topic0 == self_remove_event.0 && topic1 == self_remove_event.1 {
+            saw_self_remove = true;
+        }
+    }
+
+    assert!(saw_remove, "expected (admin, remove) event");
+    assert!(saw_self_remove, "expected (admin, self_remove) event");
 }
 
 #[test]
