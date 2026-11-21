@@ -336,3 +336,8 @@ let config_id = alert_registry.register_alert(
 ```
 
 > **Re-entrancy safety:** Soroban executes contract calls atomically and prevents classic callback-based re-entrancy within the same transaction. The registry contracts only mutate local storage after `require_auth()` succeeds, and they do not invoke external contracts, so re-entrancy is not a concern for these registries.
+
+## Handsoff notes
+
+<!-- handsoff-issue-391 -->
+- #391: test: add test verifying deactivate_all_alerts returns correct count and sets active=false on all owner alerts
