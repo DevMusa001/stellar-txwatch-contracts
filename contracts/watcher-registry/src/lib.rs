@@ -442,6 +442,13 @@ impl WatcherRegistry {
         Self::extend_instance_ttl(&env);
         for i in 0..added.len() {
             let w = added.get(i).unwrap();
+            let info = WatcherInfo {
+                address: w.clone(),
+                label: String::from_str(&env, ""),
+                registered_at: env.ledger().timestamp(),
+                registered_by: admin.clone(),
+            };
+            Self::save_info(&env, &info);
             Self::increment_watcher_count(&env);
             env.events()
                 .publish((symbol_short!("watcher"), symbol_short!("register")), w);
@@ -791,6 +798,20 @@ mod tests {
         assert_eq!(client.get_all_watchers_paginated(&1, &1), vec![&env, w2.clone()]);
         assert_eq!(client.get_all_watchers_paginated(&2, &50), vec![&env, w3]);
         assert_eq!(client.get_all_watchers_paginated(&9, &5).len(), 0);
+    }
+
+    #[test]
+    fn test_batch_registered_watchers_have_info() {
+        let (env, admin, client) = setup();
+        let w = Address::generate(&env);
+        let w2 = Address::generate(&env);
+        let batch = soroban_sdk::Vec::from_array(&env, [w.clone(), w2.clone()]);
+        assert_eq!(client.batch_register_watchers(&admin, &batch), 2);
+
+        let info = client.get_watcher_info(&w).unwrap();
+        assert_eq!(info.label, String::from_str(&env, ""));
+        assert_eq!(info.registered_by, admin);
+        assert!(client.get_watcher_info(&w2).is_some());
     }
 
     #[test]
