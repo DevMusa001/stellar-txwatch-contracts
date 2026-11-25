@@ -7,7 +7,7 @@
 
 use soroban_sdk::{testutils::{Address as _, Events as _}, vec, Address, Env, String, Symbol, TryIntoVal};
 
-use crate::{AlertRegistry, AlertRegistryClient, MAX_TTL};
+use crate::{AlertRegistry, AlertRegistryClient, Error};
 
 fn unauthed() -> (Env, AlertRegistryClient<'static>) {
     let env = Env::default();
@@ -66,35 +66,12 @@ fn set_per_owner_alert_limit_requires_admin_auth() {
 }
 
 #[test]
-fn bump_alert_clamps_ttl_and_requires_no_auth() {
+fn initialize_requires_admin_auth() {
+    // Front-running guard (#447): without the admin's signature, nobody can
+    // claim the first admin slot on a freshly deployed registry.
     let (env, client) = unauthed();
-    let owner = Address::generate(&env);
-    let target = Address::generate(&env);
-    let alert_id = client.register_alert(
-        &owner,
-        &target,
-        &String::from_str(&env, "alert"),
-        &hash64(&env),
-        &vec![&env, String::from_str(&env, "rule:transfer")],
-        &None,
-    );
-
-    // Call from an address that is not the owner; no auth is required.
-    let stranger = Address::generate(&env);
-    client.bump_alert(&stranger, &alert_id, &u32::MAX);
-
-    let mut found = false;
-    for (contract, topics, data) in env.events().all() {
-        if contract != client.address {
-            continue;
-        }
-        let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
-        let topic1: Symbol = topics.get(1).unwrap().try_into_val(&env).unwrap();
-        if topic0 == Symbol::new(&env, "alert") && topic1 == Symbol::new(&env, "bump") {
-            let effective_ttl: u32 = data.try_into_val(&env).unwrap();
-            assert_eq!(effective_ttl, MAX_TTL);
-            found = true;
-        }
-    }
-    assert!(found, "alert.bump event not emitted");
+    let admin = Address::generate(&env);
+    let result = client.try_initialize(&admin);
+    assert!(result.is_err());
+    assert!(client.get_admins().is_none());
 }

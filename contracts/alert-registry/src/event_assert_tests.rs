@@ -127,11 +127,11 @@ fn propose_webhook_emits_alert_wh_prop() {
         &owner,
         &target,
         &String::from_str(&env, "alert"),
-        &String::from_str(&env, "hash"),
+        &String::from_bytes(&env, &[b'a'; 64]),
         &vec![&env, String::from_str(&env, "rule:transfer")],
         &None,
     );
-    client.propose_webhook(&owner, &id, &String::from_str(&env, "new-hash")).unwrap();
+    client.propose_webhook(&owner, &id, &String::from_bytes(&env, &[b'b'; 64]), &None);
     assert!(emitted(&env, "alert", "wh_prop"), "propose_webhook must emit (alert, wh_prop)");
 }
 
@@ -143,13 +143,30 @@ fn confirm_webhook_emits_alert_webhook() {
         &owner,
         &target,
         &String::from_str(&env, "alert"),
-        &String::from_str(&env, "hash"),
+        &String::from_bytes(&env, &[b'a'; 64]),
         &vec![&env, String::from_str(&env, "rule:transfer")],
         &None,
     );
-    client.propose_webhook(&owner, &id, &String::from_str(&env, "new-hash")).unwrap();
-    client.confirm_webhook(&owner, &id).unwrap();
+    client.propose_webhook(&owner, &id, &String::from_bytes(&env, &[b'b'; 64]), &None);
+    client.confirm_webhook(&owner, &id);
     assert!(emitted(&env, "alert", "webhook"), "#204: confirm_webhook must emit (alert, webhook)");
     // Confirm the old non-standard event is NOT emitted.
     assert!(!emitted(&env, "alert", "wh_conf"), "#204: wh_conf must NOT be emitted by confirm_webhook");
+}
+
+#[test]
+fn transfer_ownership_emits_alert_transfer() {
+    // #450: ownership changes must be visible to off-chain indexers.
+    let (env, client, owner, target) = setup();
+    let new_owner = Address::generate(&env);
+    let id = client.register_alert(
+        &owner,
+        &target,
+        &String::from_str(&env, "alert"),
+        &String::from_str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        &vec![&env, String::from_str(&env, "rule:transfer")],
+        &None,
+    );
+    client.transfer_alert_ownership(&owner, &id, &new_owner);
+    assert!(emitted(&env, "alert", "transfer"));
 }

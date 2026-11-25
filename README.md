@@ -18,12 +18,14 @@ CI enforces a hard size budget of **200 KB (204800 bytes)** per contract WASM bi
 (see [.github/workflows/wasm-size-check.yml](.github/workflows/wasm-size-check.yml)).
 The build fails if any binary exceeds this threshold.
 
-Current WASM sizes (reference — update after significant changes):
+Current WASM sizes (reference). A change counts as **significant** when a contract binary grows or shrinks by more than **5 KB**; the PR author who causes that change updates this table in the same PR (the PR template includes a checklist item for it).
 
 | Contract | WASM binary | Budget |
 |---|---|---|
-| Alert Registry | `alert_registry.wasm` | 200 KB |
-| Watcher Registry | `watcher_registry.wasm` | 200 KB |
+| Alert Registry | `alert_registry.wasm` — 69,464 bytes (67.8 KB) | 200 KB |
+| Watcher Registry | `watcher_registry.wasm` — not measured: the crate does not compile on `main` (see note) | 200 KB |
+
+> **Note:** Sizes were measured with `cargo build --release --target wasm32-unknown-unknown -p alert-registry` on Rust 1.88.0. The watcher-registry build currently fails in `contracts/watcher-registry/src/lib.rs` (`register_watcher` references `label`, `watchers`, and `String` without defining them). Update this table once that builds.
 
 To check sizes locally after building:
 
@@ -339,5 +341,8 @@ let config_id = alert_registry.register_alert(
 
 ## Handsoff notes
 
-<!-- handsoff-issue-391 -->
-- #391: test: add test verifying deactivate_all_alerts returns correct count and sets active=false on all owner alerts
+<!-- handsoff-issue-394 -->
+- #394: test: add test for get_active_alerts_for_contract excludes inactive alerts
+
+<!-- handsoff-issue-397 -->
+- #397: test: add test for get_alerts_modified_since returns only alerts updated at or after timestamp

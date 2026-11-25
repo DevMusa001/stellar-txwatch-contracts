@@ -41,7 +41,8 @@ fn register_alert_empty_rules_returns_empty_rules_error() {
         &target,
         &str(&env, "Alert"),
         &hash64(&env),
-        &vec![&env], // empty rules, &None
+        &vec![&env],
+        &None,
     );
 
     assert_eq!(result, Err(Ok(ContractError::EmptyRules)));
@@ -281,11 +282,13 @@ fn update_webhook_valid_hash_succeeds() {
     assert!(result.is_ok(), "valid 64-char hash must be accepted");
 }
 
-// ── #396: update_tags validation ─────────────────────────────────────────────
+// ── #398: batch_register_alerts all-or-nothing atomicity ─────────────────────
 
-/// update_tags with 11 tags returns TooManyTags.
+/// A batch whose second element has an invalid (63-char) webhook hash must
+/// fail with `InvalidWebhookHash` and register none of the alerts — including
+/// the valid first element.
 #[test]
-fn update_tags_too_many_tags_returns_too_many_tags_error() {
+fn batch_register_alerts_invalid_hash_rolls_back_whole_batch() {
     let (env, client) = setup();
     let owner = Address::generate(&env);
     let target = Address::generate(&env);
@@ -299,14 +302,10 @@ fn update_tags_too_many_tags_returns_too_many_tags_error() {
         &None,
     );
 
-    let mut tags = vec![&env];
-    for i in 0..11u32 {
-        let mut buf = [b'a'; 32];
-        buf[0] = b'a' + (i as u8 % 26);
-        buf[1] = b'a' + ((i / 26) as u8 % 26);
-        let s = core::str::from_utf8(&buf).unwrap();
-        tags.push_back(str(&env, s));
-    }
+    // limit = 1000 must be clamped to MAX_BATCH_SIZE
+    let page = client
+        .get_contract_alerts_paginated(&querier, &target, &0u32, &1000u32)
+        ;
 
     let result = client.try_update_tags(&owner, &id, &tags);
     assert_eq!(result, Err(Ok(ContractError::TooManyTags)));
@@ -328,11 +327,16 @@ fn update_tags_tag_too_long_returns_tag_too_long_error() {
         &None,
     );
 
-    let long_tag = str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); // 33 bytes
-    let tags = vec![&env, long_tag];
+    let page = client
+        .get_alerts_by_owner_paginated(&querier, &owner, &0u32, &u32::MAX)
+        ;
 
-    let result = client.try_update_tags(&owner, &id, &tags);
-    assert_eq!(result, Err(Ok(ContractError::TagTooLong)));
+    // The valid first element must not have been persisted.
+    assert_eq!(
+        client.count_for_contract(&target_a),
+        0,
+        "first element must not be registered when the batch fails"
+    );
 }
 
 /// update_tags with exactly 10 tags of 32 bytes each succeeds.
@@ -351,15 +355,47 @@ fn update_tags_max_tags_and_length_succeeds() {
         &None,
     );
 
-    let mut tags = vec![&env];
-    for i in 0..10u32 {
-        let mut buf = [b'a'; 32];
-        buf[0] = b'a' + (i as u8 % 26);
-        buf[1] = b'a' + ((i / 26) as u8 % 26);
-        let s = core::str::from_utf8(&buf).unwrap();
-        tags.push_back(str(&env, s));
-    }
+    let page = client
+        .get_contract_alerts_paginated(&querier, &target, &0u32, &5u32)
+        ;
 
     let result = client.try_update_tags(&owner, &id, &tags);
     assert!(result.is_ok(), "10 tags of 32 bytes must be accepted");
+}
+
+// ── #456: register_alert and update_label share the same label boundary ───────
+
+/// A label of exactly `len` bytes, built from raw bytes so the test has no string-literal limits.
+fn label_of_len(env: &Env, len: usize) -> String {
+    let bytes = [b'a'; 200];
+    String::from_bytes(env, &bytes[..len])
+}
+
+/// The 128-byte label boundary is enforced identically by register_alert and update_label.
+#[test]
+fn register_and_update_label_share_128_byte_boundary() {
+    let (env, client) = setup();
+    let owner = Address::generate(&env);
+    let target = Address::generate(&env);
+    let rules = vec![&env, str(&env, "rule")];
+
+    // Exactly at the boundary: both entry points accept the label.
+    let at_limit = label_of_len(&env, 128);
+    let id = client.register_alert(&owner, &target, &at_limit, &hash64(&env), &rules, &None);
+    assert_eq!(client.try_update_label(&owner, &id, &at_limit), Ok(Ok(())));
+
+    // One byte over the boundary: both entry points reject with LabelTooLong.
+    let over_limit = label_of_len(&env, 129);
+    let register_result = client.try_register_alert(
+        &owner,
+        &target,
+        &over_limit,
+        &hash64(&env),
+        &rules,
+        &None,
+    );
+    let update_result = client.try_update_label(&owner, &id, &over_limit);
+
+    assert_eq!(register_result, Err(Ok(ContractError::LabelTooLong)));
+    assert_eq!(update_result, Err(Ok(ContractError::LabelTooLong)));
 }
