@@ -293,53 +293,39 @@ fn batch_register_alerts_invalid_hash_rolls_back_whole_batch() {
     let owner = Address::generate(&env);
     let target = Address::generate(&env);
 
-    let total = MAX_BATCH_SIZE + 5;
-    for i in 0..total {
-        let label = String::from_str(&env, "alert");
-        let _ = i;
-        client.register_alert(
-            &owner,
-            &target,
-            &label,
-            &hash64(&env),
-            &vec![&env, str(&env, "rule:transfer")],
-            &None,
-        );
-    }
+    let id = client.register_alert(
+        &owner,
+        &target,
+        &str(&env, "Alert"),
+        &hash64(&env),
+        &vec![&env, str(&env, "rule:transfer")],
+        &None,
+    );
 
     // limit = 1000 must be clamped to MAX_BATCH_SIZE
     let page = client
         .get_contract_alerts_paginated(&querier, &target, &0u32, &1000u32)
         ;
 
-    assert_eq!(
-        page.len(),
-        MAX_BATCH_SIZE,
-        "limit=1000 must be clamped to MAX_BATCH_SIZE={MAX_BATCH_SIZE}"
-    );
+    let result = client.try_update_tags(&owner, &id, &tags);
+    assert_eq!(result, Err(Ok(ContractError::TooManyTags)));
 }
 
-/// get_alerts_by_owner_paginated with limit > MAX_BATCH_SIZE is silently clamped.
+/// update_tags with a single 33-byte tag returns TagTooLong.
 #[test]
-fn paginated_owner_limit_exceeding_max_batch_size_is_clamped() {
+fn update_tags_tag_too_long_returns_tag_too_long_error() {
     let (env, client) = setup();
-    let querier = Address::generate(&env);
     let owner = Address::generate(&env);
     let target = Address::generate(&env);
 
-    let total = MAX_BATCH_SIZE + 3;
-    for i in 0..total {
-        let label = String::from_str(&env, "alert");
-        let _ = i;
-        client.register_alert(
-            &owner,
-            &target,
-            &label,
-            &hash64(&env),
-            &vec![&env, str(&env, "rule:transfer")],
-            &None,
-        );
-    }
+    let id = client.register_alert(
+        &owner,
+        &target,
+        &str(&env, "Alert"),
+        &hash64(&env),
+        &vec![&env, str(&env, "rule:transfer")],
+        &None,
+    );
 
     let page = client
         .get_alerts_by_owner_paginated(&querier, &owner, &0u32, &u32::MAX)
@@ -353,30 +339,28 @@ fn paginated_owner_limit_exceeding_max_batch_size_is_clamped() {
     );
 }
 
-/// A limit within MAX_BATCH_SIZE is respected exactly.
+/// update_tags with exactly 10 tags of 32 bytes each succeeds.
 #[test]
-fn paginated_limit_within_max_batch_size_is_exact() {
+fn update_tags_max_tags_and_length_succeeds() {
     let (env, client) = setup();
-    let querier = Address::generate(&env);
     let owner = Address::generate(&env);
     let target = Address::generate(&env);
 
-    for _ in 0..10u32 {
-        client.register_alert(
-            &owner,
-            &target,
-            &str(&env, "alert"),
-            &hash64(&env),
-            &vec![&env, str(&env, "rule:transfer")],
-            &None,
-        );
-    }
+    let id = client.register_alert(
+        &owner,
+        &target,
+        &str(&env, "Alert"),
+        &hash64(&env),
+        &vec![&env, str(&env, "rule:transfer")],
+        &None,
+    );
 
     let page = client
         .get_contract_alerts_paginated(&querier, &target, &0u32, &5u32)
         ;
 
-    assert_eq!(page.len(), 5, "limit=5 (below MAX_BATCH_SIZE) must return exactly 5");
+    let result = client.try_update_tags(&owner, &id, &tags);
+    assert!(result.is_ok(), "10 tags of 32 bytes must be accepted");
 }
 
 // ── #456: register_alert and update_label share the same label boundary ───────

@@ -5,7 +5,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, vec, Address, Env, String};
+use soroban_sdk::{testutils::{Address as _, Events as _}, vec, Address, Env, String, Symbol, TryIntoVal};
 
 use crate::{AlertRegistry, AlertRegistryClient, Error};
 

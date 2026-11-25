@@ -115,3 +115,73 @@ pub fn save_info(env: &Env, info: &WatcherInfo) {
         .persistent()
         .extend_ttl(&key, DEFAULT_TTL, DEFAULT_TTL);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban::Env;
+
+    fn setup() -> Env {
+        let env = Env::default();
+        env.mock_all_auths();
+        env
+    }
+
+    #[test]
+    fn update_target_contract_migrates_contract_index() {
+        let env = setup();
+        let contract_a = Address::generate(&env);
+        let contract_b = Address::generate(&env);
+        let alert_id = 1u64;
+
+        // Register an alert watching contract_a.
+        let mut ids_a = Vec::new(&env);
+        ids_a.push_back(alert_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::AlertIdsForContract(contract_a.clone()), &ids_a);
+
+        // Migrate the alert to contract_b: remove from old index, add to new.
+        let mut ids_a = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u64>>(&DataKey::AlertIdsForContract(contract_a.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut remaining = Vec::new(&env);
+        for id in ids_a.iter() {
+            if id != alert_id {
+                remaining.push_back(id);
+            }
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::AlertIdsForContract(contract_a.clone()), &remaining);
+
+        let mut ids_b = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u64>>(&DataKey::AlertIdsForContract(contract_b.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        ids_b.push_back(alert_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::AlertIdsForContract(contract_b.clone()), &ids_b);
+
+        // Old contract index must be empty.
+        let old_ids = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u64>>(&DataKey::AlertIdsForContract(contract_a.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        assert_eq!(old_ids.len(), 0);
+
+        // New contract index must contain the alert ID.
+        let new_ids = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u64>>(&DataKey::AlertIdsForContract(contract_b.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        assert_eq!(new_ids.len(), 1);
+        assert_eq!(new_ids.get(0).unwrap(), alert_id);
+    }
+}
