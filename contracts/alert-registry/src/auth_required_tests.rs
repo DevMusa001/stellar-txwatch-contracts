@@ -7,7 +7,7 @@
 
 use soroban_sdk::{testutils::Address as _, vec, Address, Env, String};
 
-use crate::{AlertRegistry, AlertRegistryClient};
+use crate::{AlertRegistry, AlertRegistryClient, Error};
 
 fn unauthed() -> (Env, AlertRegistryClient<'static>) {
     let env = Env::default();

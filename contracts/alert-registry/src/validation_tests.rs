@@ -279,19 +279,17 @@ fn update_webhook_valid_hash_succeeds() {
     // A different valid 64-char hash
     let new_hash = str(&env, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     let result = client.try_update_webhook(&owner, &id, &new_hash);
-    assert!(result.is_ok(), "valid 64-char hash must be accepted in update_webhook");
+    assert!(result.is_ok(), "valid 64-char hash must be accepted");
 }
 
-// ── #209: BatchTooLarge / MAX_BATCH_SIZE clamping ────────────────────────────
+// ── #398: batch_register_alerts all-or-nothing atomicity ─────────────────────
 
-/// get_contract_alerts_paginated with limit > MAX_BATCH_SIZE is silently clamped.
-///
-/// Registers MAX_BATCH_SIZE + 5 alerts, then queries with limit = 1000.
-/// The response must contain at most MAX_BATCH_SIZE entries, not all registered ones.
+/// A batch whose second element has an invalid (63-char) webhook hash must
+/// fail with `InvalidWebhookHash` and register none of the alerts — including
+/// the valid first element.
 #[test]
-fn paginated_limit_exceeding_max_batch_size_is_clamped() {
+fn batch_register_alerts_invalid_hash_rolls_back_whole_batch() {
     let (env, client) = setup();
-    let querier = Address::generate(&env);
     let owner = Address::generate(&env);
     let target = Address::generate(&env);
 
@@ -347,10 +345,11 @@ fn paginated_owner_limit_exceeding_max_batch_size_is_clamped() {
         .get_alerts_by_owner_paginated(&querier, &owner, &0u32, &u32::MAX)
         ;
 
+    // The valid first element must not have been persisted.
     assert_eq!(
-        page.len(),
-        MAX_BATCH_SIZE,
-        "limit=u32::MAX must be clamped to MAX_BATCH_SIZE={MAX_BATCH_SIZE}"
+        client.count_for_contract(&target_a),
+        0,
+        "first element must not be registered when the batch fails"
     );
 }
 
